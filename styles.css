@@ -253,6 +253,29 @@ body {
   text-decoration-color: var(--disabled);
 }
 
+.event-pill--promo {
+  background: #d6e6f9;
+  border-left-color: #8fbdf2;
+}
+
+.event-pill--promo:hover {
+  background: #c3daf3;
+}
+
+.event-pill--promo .event-pill__title {
+  color: #1c2c3d;
+  font-style: italic;
+}
+
+.event-pill--promo .event-pill__time {
+  color: #3c5772;
+}
+
+.event-pill--promo .event-pill__lang {
+  background: rgba(16, 20, 26, 0.12);
+  color: #3c5772;
+}
+
 .event-pill__time {
   font-family: var(--font-mono);
   font-size: 11px;

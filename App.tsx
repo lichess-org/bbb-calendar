@@ -37,12 +37,16 @@ interface EventExtendedProps {
   hostedBy?: string;
   manage: string;
   url: string;
+  isPromo?: boolean;
 }
 
 function renderEventContent(arg: EventContentArg) {
-  const { enabled, language } = arg.event.extendedProps as EventExtendedProps;
+  const { enabled, language, isPromo } = arg.event.extendedProps as EventExtendedProps;
+  const classNames = ["event-pill"];
+  if (!enabled) classNames.push("event-pill--disabled");
+  if (isPromo) classNames.push("event-pill--promo");
   return (
-    <div className={`event-pill${enabled ? "" : " event-pill--disabled"}`}>
+    <div className={classNames.join(" ")}>
       {arg.timeText && <span className="event-pill__time">{arg.timeText}</span>}
       <span className="event-pill__title">{arg.event.title}</span>
       <span className="event-pill__lang">{language}</span>
@@ -51,11 +55,13 @@ function renderEventContent(arg: EventContentArg) {
 }
 
 function handleEventDidMount(arg: EventMountArg) {
-  const { enabled, homepageHours, language, createdBy, hostedBy } =
+  const { enabled, homepageHours, language, createdBy, hostedBy, isPromo } =
     arg.event.extendedProps as EventExtendedProps;
   arg.el.title = [
     arg.event.title,
-    `${enabled ? "Enabled" : "Disabled"} · ${homepageHours}h on homepage · ${language.toUpperCase()}`,
+    isPromo
+      ? `Homepage promo · ${homepageHours}h leading up to the event · ${language.toUpperCase()}`
+      : `${enabled ? "Enabled" : "Disabled"} · ${homepageHours}h on homepage · ${language.toUpperCase()}`,
     `Created by ${createdBy}${hostedBy ? ` · Hosted by ${hostedBy}` : ""}`,
   ].join("\n");
 }
@@ -76,12 +82,8 @@ export function App() {
       })
       .then((data) => {
         setError(null);
-        const events: EventInput[] = data.currentPageResults.map((ev) => ({
-          id: ev.manage,
-          title: ev.title.trim(),
-          start: ev.start,
-          end: ev.end,
-          extendedProps: {
+        const events: EventInput[] = data.currentPageResults.flatMap((ev) => {
+          const extendedProps: EventExtendedProps = {
             enabled: ev.enabled,
             homepageHours: ev.homepageHours,
             language: ev.language,
@@ -89,8 +91,29 @@ export function App() {
             hostedBy: ev.hostedBy,
             manage: ev.manage,
             url: ev.url,
-          } satisfies EventExtendedProps,
-        }));
+          };
+          const title = ev.title.trim();
+          const mainEvent: EventInput = {
+            id: ev.manage,
+            title,
+            start: ev.start,
+            end: ev.end,
+            extendedProps,
+          };
+          if (!ev.homepageHours) return [mainEvent];
+
+          const promoStart = new Date(
+            new Date(ev.start).getTime() - ev.homepageHours * 60 * 60 * 1000,
+          ).toISOString();
+          const promoEvent: EventInput = {
+            id: `${ev.manage}-promo`,
+            title: `(promo) ${title}`,
+            start: promoStart,
+            end: ev.start,
+            extendedProps: { ...extendedProps, isPromo: true },
+          };
+          return [promoEvent, mainEvent];
+        });
         success(events);
       })
       .catch((err: Error) => {
