@@ -101,8 +101,8 @@ function withPromo(
 }
 
 const EVENT_COLORS = {
-  main: { backgroundColor: "var(--accent)", borderColor: "var(--accent-strong)" },
-  promo: { backgroundColor: "var(--accent-tint)", borderColor: "var(--accent)" },
+  main: { backgroundColor: "var(--event-accent)", borderColor: "var(--event-accent-strong)" },
+  promo: { backgroundColor: "var(--event-accent-tint)", borderColor: "var(--event-accent)" },
 };
 
 const TOURNAMENT_COLORS = {
