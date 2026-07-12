@@ -32,41 +32,118 @@ interface ApiResponse {
   nbResults: number;
 }
 
-interface EventExtendedProps {
-  enabled: boolean;
-  homepageHours: number;
-  language: string;
+interface TournamentApiEvent {
+  id: string;
   createdBy: string;
-  hostedBy?: string;
-  manage: string;
-  url: string;
-  isPromo?: boolean;
+  system: string;
+  rated: boolean;
+  fullName: string;
+  nbPlayers: number;
+  startsAt: number;
+  finishesAt: number;
+  clock: { limit: number; increment: number };
+  perf: { key: string; name: string };
+  spotlight: { headline: string | null; homepageHours: number | null; manage: string };
 }
 
+interface TournamentApiResponse {
+  currentPageResults: TournamentApiEvent[];
+  nbResults: number;
+}
+
+interface EventExtendedProps {
+  source: "event" | "tournament";
+  manage: string;
+  createdBy: string;
+  tag: string;
+  isPromo?: boolean;
+  // event-source fields
+  enabled?: boolean;
+  homepageHours?: number;
+  language?: string;
+  hostedBy?: string;
+  url?: string;
+  // tournament-source fields
+  rated?: boolean;
+  perfName?: string;
+  clockText?: string;
+  nbPlayers?: number;
+}
+
+interface EventColors {
+  backgroundColor: string;
+  borderColor: string;
+}
+
+function withPromo(
+  id: string,
+  title: string,
+  start: string | number,
+  end: string | number,
+  homepageHours: number | null | undefined,
+  promoTitle: string,
+  extendedProps: EventExtendedProps,
+  colors?: { main: EventColors; promo: EventColors },
+): EventInput[] {
+  const mainEvent: EventInput = { id, title, start, end, extendedProps, ...colors?.main };
+  if (!homepageHours) return [mainEvent];
+
+  const promoStart = new Date(new Date(start).getTime() - homepageHours * 60 * 60 * 1000).toISOString();
+  const promoEvent: EventInput = {
+    id: `${id}-promo`,
+    title: promoTitle,
+    start: promoStart,
+    end: start,
+    extendedProps: { ...extendedProps, isPromo: true },
+    ...colors?.promo,
+  };
+  return [promoEvent, mainEvent];
+}
+
+const EVENT_COLORS = {
+  main: { backgroundColor: "var(--accent)", borderColor: "var(--accent-strong)" },
+  promo: { backgroundColor: "var(--accent-tint)", borderColor: "var(--accent)" },
+};
+
+const TOURNAMENT_COLORS = {
+  main: { backgroundColor: "var(--accent2)", borderColor: "var(--accent2-strong)" },
+  promo: { backgroundColor: "var(--accent2-tint)", borderColor: "var(--accent2)" },
+};
+
 function renderEventContent(arg: EventContentArg) {
-  const { enabled, language, isPromo } = arg.event.extendedProps as EventExtendedProps;
+  const { source, enabled, isPromo, tag } = arg.event.extendedProps as EventExtendedProps;
   const classNames = ["event-pill"];
-  if (!enabled) classNames.push("event-pill--disabled");
+  if (source === "tournament") classNames.push("event-pill--tournament");
+  if (enabled === false) classNames.push("event-pill--disabled");
   if (isPromo) classNames.push("event-pill--promo");
   return (
     <div className={classNames.join(" ")}>
       {arg.timeText && <span className="event-pill__time">{arg.timeText}</span>}
       <span className="event-pill__title">{arg.event.title}</span>
-      <span className="event-pill__lang">{language}</span>
+      {tag && <span className="event-pill__lang">{tag}</span>}
     </div>
   );
 }
 
 function handleEventDidMount(arg: EventMountArg) {
-  const { enabled, homepageHours, language, createdBy, hostedBy, isPromo } =
-    arg.event.extendedProps as EventExtendedProps;
-  arg.el.title = [
-    arg.event.title,
-    isPromo
-      ? `Homepage promo · ${homepageHours}h leading up to the event · ${language.toUpperCase()}`
-      : `${enabled ? "Enabled" : "Disabled"} · ${homepageHours}h on homepage · ${language.toUpperCase()}`,
-    `Created by ${createdBy}${hostedBy ? ` · Hosted by ${hostedBy}` : ""}`,
-  ].join("\n");
+  const props = arg.event.extendedProps as EventExtendedProps;
+  const lines = [arg.event.title];
+
+  if (props.source === "tournament") {
+    lines.push(
+      `${props.rated ? "Rated" : "Casual"} ${props.perfName} · ${props.clockText} · ${props.nbPlayers} players`,
+    );
+    lines.push(`Created by ${props.createdBy}`);
+  } else {
+    lines.push(
+      props.isPromo
+        ? `Homepage promo · ${props.homepageHours}h leading up to the event · ${props.language?.toUpperCase()}`
+        : `${props.enabled ? "Enabled" : "Disabled"} · ${props.homepageHours}h on homepage · ${props.language?.toUpperCase()}`,
+    );
+    lines.push(`Created by ${props.createdBy}${props.hostedBy ? ` · Hosted by ${props.hostedBy}` : ""}`);
+  }
+
+  arg.el.title = lines.join("\n");
 }
 
 export function App() {
@@ -78,15 +155,23 @@ export function App() {
     const since = info.start.getTime();
     const until = info.end.getTime();
 
-    fetch(`/api/event/calendar?since=${since}&until=${until}`)
-      .then((res) => {
+    const fetchJson = <T,>(path: string) =>
+      fetch(`${path}?since=${since}&until=${until}`).then((res) => {
         if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
-        return res.json() as Promise<ApiResponse>;
-      })
-      .then((data) => {
+        return res.json() as Promise<T>;
+      });
+
+    Promise.all([
+      fetchJson<ApiResponse>("/api/event/calendar"),
+      fetchJson<TournamentApiResponse>("/api/tournament/manager/calendar"),
+    ])
+      .then(([eventData, tournamentData]) => {
         setError(null);
-        const events: EventInput[] = data.currentPageResults.flatMap((ev) => {
+
+        const events: EventInput[] = eventData.currentPageResults.flatMap((ev) => {
+          const title = ev.title.trim();
           const extendedProps: EventExtendedProps = {
+            source: "event",
             enabled: ev.enabled,
             homepageHours: ev.homepageHours,
             language: ev.language,
@@ -94,30 +179,46 @@ export function App() {
             hostedBy: ev.hostedBy,
             manage: ev.manage,
             url: ev.url,
+            tag: ev.language.toUpperCase(),
           };
-          const title = ev.title.trim();
-          const mainEvent: EventInput = {
-            id: ev.manage,
+          return withPromo(
+            ev.manage,
             title,
-            start: ev.start,
-            end: ev.end,
+            ev.start,
+            ev.end,
+            ev.homepageHours,
+            `(promo) ${title}`,
             extendedProps,
-          };
-          if (!ev.homepageHours) return [mainEvent];
-
-          const promoStart = new Date(
-            new Date(ev.start).getTime() - ev.homepageHours * 60 * 60 * 1000,
-          ).toISOString();
-          const promoEvent: EventInput = {
-            id: `${ev.manage}-promo`,
-            title: `(promo) ${title}`,
-            start: promoStart,
-            end: ev.start,
-            extendedProps: { ...extendedProps, isPromo: true },
-          };
-          return [promoEvent, mainEvent];
+            EVENT_COLORS,
+          );
         });
-        success(events);
+
+        const tournaments: EventInput[] = tournamentData.currentPageResults.flatMap((t) => {
+          const clockText = `${Math.floor(t.clock.limit / 60)}+${t.clock.increment}`;
+          const extendedProps: EventExtendedProps = {
+            source: "tournament",
+            createdBy: t.createdBy,
+            manage: t.spotlight.manage,
+            tag: clockText,
+            rated: t.rated,
+            perfName: t.perf.name,
+            clockText,
+            nbPlayers: t.nbPlayers,
+          };
+          const promoTitle = t.spotlight.headline?.trim() || `(promo) ${t.fullName}`;
+          return withPromo(
+            t.id,
+            t.fullName,
+            t.startsAt,
+            t.finishesAt,
+            t.spotlight.homepageHours,
+            promoTitle,
+            extendedProps,
+            TOURNAMENT_COLORS,
+          );
+        });
+
+        success([...events, ...tournaments]);
       })
       .catch((err: Error) => {
         setError(err.message);

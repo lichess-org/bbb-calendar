@@ -9,6 +9,10 @@
   --accent-strong: #1967d2;
   --accent-tint: #e8f0fe;
   --accent-contrast: #ffffff;
+  --accent2: #8e24aa;
+  --accent2-strong: #6a1b9a;
+  --accent2-tint: #f3e5f5;
+  --accent2-tint-hover: #e9d2ee;
   --disabled: #9aa0a6;
   --danger: #d93025;
   --radius: 8px;
@@ -314,6 +318,34 @@ body {
 .event-pill--promo .event-pill__lang {
   background: rgba(25, 103, 210, 0.12);
   color: var(--accent-strong);
+}
+
+.event-pill--tournament {
+  background: var(--accent2);
+  border-left-color: var(--accent2-strong);
+}
+
+.event-pill--tournament:hover {
+  background: var(--accent2-strong);
+}
+
+.event-pill--tournament.event-pill--promo {
+  background: var(--accent2-tint);
+  border-left-color: var(--accent2);
+}
+
+.event-pill--tournament.event-pill--promo:hover {
+  background: var(--accent2-tint-hover);
+}
+
+.event-pill--tournament.event-pill--promo .event-pill__time,
+.event-pill--tournament.event-pill--promo .event-pill__title {
+  color: var(--accent2-strong);
+}
+
+.event-pill--tournament.event-pill--promo .event-pill__lang {
+  background: rgba(106, 27, 154, 0.12);
+  color: var(--accent2-strong);
 }
 
 .event-pill__time {
