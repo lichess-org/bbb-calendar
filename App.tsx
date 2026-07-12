@@ -205,7 +205,7 @@ export function App() {
             clockText,
             nbPlayers: t.nbPlayers,
           };
-          const promoTitle = t.spotlight.headline?.trim() || `(promo) ${t.fullName}`;
+          const promoTitle = `(promo) ${t.spotlight.headline?.trim() || t.fullName}`;
           return withPromo(
             t.id,
             t.fullName,
