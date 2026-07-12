@@ -3,6 +3,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import allLocales from "@fullcalendar/core/locales-all";
 import type {
   EventClickArg,
   EventContentArg,
@@ -10,6 +11,8 @@ import type {
   EventMountArg,
   EventSourceFunc,
 } from "@fullcalendar/core";
+
+const browserLocale = typeof navigator !== "undefined" ? navigator.language : "en";
 
 interface ApiEvent {
   title: string;
@@ -149,8 +152,8 @@ export function App() {
             center: "title",
             right: "dayGridMonth,timeGridWeek,timeGridDay",
           }}
-          buttonText={{ today: "Today", month: "Month", week: "Week", day: "Day" }}
-          firstDay={1}
+          locales={allLocales}
+          locale={browserLocale}
           height="100%"
           nowIndicator
           dayMaxEvents={3}

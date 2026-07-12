@@ -107,7 +107,7 @@ body {
   --fc-neutral-bg-color: var(--surface-2);
   --fc-neutral-text-color: var(--text-muted);
   --fc-border-color: var(--border);
-  --fc-today-bg-color: transparent;
+  --fc-today-bg-color: var(--accent-tint);
   --fc-now-indicator-color: var(--danger);
   --fc-event-bg-color: var(--accent);
   --fc-event-border-color: var(--accent);
@@ -216,6 +216,15 @@ body {
   background: var(--fc-today-bg-color);
 }
 
+.app__main .fc .fc-col-header-cell.fc-day-today {
+  background: var(--accent-tint);
+}
+
+.app__main .fc .fc-col-header-cell.fc-day-today .fc-col-header-cell-cushion {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
 .app__main .fc .fc-timegrid-slot-label-cushion,
 .app__main .fc .fc-timegrid-axis-cushion {
   color: var(--text-muted);
@@ -230,10 +239,14 @@ body {
 }
 
 .app__main .fc .fc-timegrid-now-indicator-line {
+  border-top-width: 3px;
   border-color: var(--danger);
+  box-shadow: 0 0 4px rgba(217, 48, 37, 0.4);
 }
 
 .app__main .fc .fc-timegrid-now-indicator-arrow {
+  margin-top: -6px;
+  border-width: 6px 7px 6px 0;
   border-color: var(--danger);
   color: var(--danger);
 }
