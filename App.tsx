@@ -180,7 +180,7 @@ export function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchEvents: EventSourceFunc = useCallback((info, success, failure) => {
+  const fetchEvents: EventSourceFunc = useCallback((info, success) => {
     const since = info.start.getTime();
     const until = info.end.getTime();
 
@@ -201,92 +201,106 @@ export function App() {
           .map((line) => JSON.parse(line) as T);
       });
 
-    Promise.all([
+    const describeFailure = (label: string, result: PromiseSettledResult<unknown>) =>
+      result.status === "rejected"
+        ? `${label}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`
+        : null;
+
+    Promise.allSettled([
       fetchJson<ApiResponse>("/api/event/calendar"),
       fetchJson<TournamentApiResponse>("/api/tournament/manager/calendar"),
       fetchNdjson<SpotlightRoundApiEvent>("/api/broadcast/spotlight-rounds"),
-    ])
-      .then(([eventData, tournamentData, spotlightRounds]) => {
-        setError(null);
+    ]).then(([eventResult, tournamentResult, spotlightResult]) => {
+      const events: EventInput[] =
+        eventResult.status === "fulfilled"
+          ? eventResult.value.currentPageResults.flatMap((ev) => {
+              const title = ev.title.trim();
+              const extendedProps: EventExtendedProps = {
+                source: "event",
+                enabled: ev.enabled,
+                homepageHours: ev.homepageHours,
+                language: ev.language,
+                createdBy: ev.createdBy,
+                hostedBy: ev.hostedBy,
+                manage: ev.manage,
+                url: ev.url,
+                tag: ev.language.toUpperCase(),
+              };
+              return withPromo(
+                ev.manage,
+                title,
+                ev.start,
+                ev.end,
+                ev.homepageHours,
+                `(promo) ${title}`,
+                extendedProps,
+                EVENT_COLORS,
+              );
+            })
+          : [];
 
-        const events: EventInput[] = eventData.currentPageResults.flatMap((ev) => {
-          const title = ev.title.trim();
-          const extendedProps: EventExtendedProps = {
-            source: "event",
-            enabled: ev.enabled,
-            homepageHours: ev.homepageHours,
-            language: ev.language,
-            createdBy: ev.createdBy,
-            hostedBy: ev.hostedBy,
-            manage: ev.manage,
-            url: ev.url,
-            tag: ev.language.toUpperCase(),
-          };
-          return withPromo(
-            ev.manage,
-            title,
-            ev.start,
-            ev.end,
-            ev.homepageHours,
-            `(promo) ${title}`,
-            extendedProps,
-            EVENT_COLORS,
-          );
-        });
+      const tournaments: EventInput[] =
+        tournamentResult.status === "fulfilled"
+          ? tournamentResult.value.currentPageResults.flatMap((t) => {
+              const clockText = `${Math.floor(t.clock.limit / 60)}+${t.clock.increment}`;
+              const extendedProps: EventExtendedProps = {
+                source: "tournament",
+                createdBy: t.createdBy,
+                manage: t.spotlight.manage,
+                tag: clockText,
+                rated: t.rated,
+                perfName: t.perf.name,
+                clockText,
+                nbPlayers: t.nbPlayers,
+              };
+              const promoTitle = `(promo) ${t.spotlight.headline?.trim() || t.fullName}`;
+              return withPromo(
+                t.id,
+                t.fullName,
+                t.startsAt,
+                t.finishesAt,
+                t.spotlight.homepageHours,
+                promoTitle,
+                extendedProps,
+                TOURNAMENT_COLORS,
+              );
+            })
+          : [];
 
-        const tournaments: EventInput[] = tournamentData.currentPageResults.flatMap((t) => {
-          const clockText = `${Math.floor(t.clock.limit / 60)}+${t.clock.increment}`;
-          const extendedProps: EventExtendedProps = {
-            source: "tournament",
-            createdBy: t.createdBy,
-            manage: t.spotlight.manage,
-            tag: clockText,
-            rated: t.rated,
-            perfName: t.perf.name,
-            clockText,
-            nbPlayers: t.nbPlayers,
-          };
-          const promoTitle = `(promo) ${t.spotlight.headline?.trim() || t.fullName}`;
-          return withPromo(
-            t.id,
-            t.fullName,
-            t.startsAt,
-            t.finishesAt,
-            t.spotlight.homepageHours,
-            promoTitle,
-            extendedProps,
-            TOURNAMENT_COLORS,
-          );
-        });
+      const spotlights: EventInput[] =
+        spotlightResult.status === "fulfilled"
+          ? spotlightResult.value
+              .filter((r): r is SpotlightRoundApiEvent & { startsAt: number } => typeof r.startsAt === "number")
+              .map((r) => {
+                const extendedProps: EventExtendedProps = {
+                  source: "spotlight",
+                  manage: r.url,
+                  tag: r.spotlight.language.toUpperCase(),
+                  rated: r.rated,
+                  tourName: r.tour.name,
+                  spotlightTitle: r.spotlight.title,
+                  tier: r.spotlight.tier,
+                  language: r.spotlight.language,
+                };
+                return {
+                  id: r.id,
+                  title: `${r.tour.name} · ${r.name}`,
+                  start: r.startsAt,
+                  extendedProps,
+                  ...SPOTLIGHT_COLORS,
+                } satisfies EventInput;
+              })
+          : [];
 
-        const spotlights: EventInput[] = spotlightRounds
-          .filter((r): r is SpotlightRoundApiEvent & { startsAt: number } => typeof r.startsAt === "number")
-          .map((r) => {
-            const extendedProps: EventExtendedProps = {
-              source: "spotlight",
-              manage: r.url,
-              tag: r.spotlight.language.toUpperCase(),
-              rated: r.rated,
-              tourName: r.tour.name,
-              spotlightTitle: r.spotlight.title,
-              tier: r.spotlight.tier,
-              language: r.spotlight.language,
-            };
-            return {
-              id: r.id,
-              title: `${r.tour.name} · ${r.name}`,
-              start: r.startsAt,
-              extendedProps,
-              ...SPOTLIGHT_COLORS,
-            } satisfies EventInput;
-          });
+      const errors = [
+        describeFailure("Events", eventResult),
+        describeFailure("Tournaments", tournamentResult),
+        describeFailure("Spotlight rounds", spotlightResult),
+      ].filter((e): e is string => e !== null);
 
-        success([...events, ...tournaments, ...spotlights]);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-        failure(err);
-      });
+      setError(errors.length ? errors.join(" · ") : null);
+      success([...events, ...tournaments, ...spotlights]);
+    });
   }, []);
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
