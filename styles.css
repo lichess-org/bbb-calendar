@@ -17,6 +17,10 @@
   --event-accent-strong: #188038;
   --event-accent-tint: #e6f4ea;
   --event-accent-tint-hover: #ceead6;
+  --spotlight-accent: #e8710a;
+  --spotlight-accent-strong: #b95000;
+  --spotlight-accent-tint: #fef1e6;
+  --spotlight-accent-tint-hover: #fce1c2;
   --disabled: #9aa0a6;
   --danger: #d93025;
   --radius: 8px;
@@ -350,6 +354,15 @@ body {
 .event-pill--tournament.event-pill--promo .event-pill__lang {
   background: rgba(106, 27, 154, 0.12);
   color: var(--accent2-strong);
+}
+
+.event-pill--spotlight {
+  background: var(--spotlight-accent);
+  border-left-color: var(--spotlight-accent-strong);
+}
+
+.event-pill--spotlight:hover {
+  background: var(--spotlight-accent-strong);
 }
 
 .event-pill__time {

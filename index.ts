@@ -30,6 +30,7 @@ const server = Bun.serve({
 
     "/api/event/calendar": proxyRoute("/api/event/calendar"),
     "/api/tournament/manager/calendar": proxyRoute("/api/tournament/manager/calendar"),
+    "/api/broadcast/spotlight-rounds": proxyRoute("/api/broadcast/spotlight-rounds"),
   },
 
   development: {

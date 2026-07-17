@@ -51,10 +51,25 @@ interface TournamentApiResponse {
   nbResults: number;
 }
 
+interface SpotlightRoundApiEvent {
+  id: string;
+  name: string;
+  rated: boolean;
+  startsAt?: number;
+  startsAfterPrevious?: boolean;
+  url: string;
+  tour: {
+    id: string;
+    name: string;
+    tier: number;
+  };
+  spotlight: { language: string; title: string; tier: number };
+}
+
 interface EventExtendedProps {
-  source: "event" | "tournament";
+  source: "event" | "tournament" | "spotlight";
   manage: string;
-  createdBy: string;
+  createdBy?: string;
   tag: string;
   isPromo?: boolean;
   // event-source fields
@@ -68,6 +83,10 @@ interface EventExtendedProps {
   perfName?: string;
   clockText?: string;
   nbPlayers?: number;
+  // spotlight-round-source fields
+  tourName?: string;
+  spotlightTitle?: string;
+  tier?: number;
 }
 
 interface EventColors {
@@ -110,10 +129,16 @@ const TOURNAMENT_COLORS = {
   promo: { backgroundColor: "var(--accent2-tint)", borderColor: "var(--accent2)" },
 };
 
+const SPOTLIGHT_COLORS: EventColors = {
+  backgroundColor: "var(--spotlight-accent)",
+  borderColor: "var(--spotlight-accent-strong)",
+};
+
 function renderEventContent(arg: EventContentArg) {
   const { source, enabled, isPromo, tag } = arg.event.extendedProps as EventExtendedProps;
   const classNames = ["event-pill"];
   if (source === "tournament") classNames.push("event-pill--tournament");
+  if (source === "spotlight") classNames.push("event-pill--spotlight");
   if (enabled === false) classNames.push("event-pill--disabled");
   if (isPromo) classNames.push("event-pill--promo");
   return (
@@ -134,6 +159,10 @@ function handleEventDidMount(arg: EventMountArg) {
       `${props.rated ? "Rated" : "Casual"} ${props.perfName} · ${props.clockText} · ${props.nbPlayers} players`,
     );
     lines.push(`Created by ${props.createdBy}`);
+  } else if (props.source === "spotlight") {
+    lines.push(`${props.rated ? "Rated" : "Casual"} · Tier ${props.tier} · ${props.language?.toUpperCase()}`);
+    lines.push(`Spotlight: ${props.spotlightTitle}`);
+    lines.push(`Part of ${props.tourName}`);
   } else {
     lines.push(
       props.isPromo
@@ -161,11 +190,23 @@ export function App() {
         return res.json() as Promise<T>;
       });
 
+    const fetchNdjson = <T,>(path: string) =>
+      fetch(`${path}?since=${since}&until=${until}`).then(async (res) => {
+        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        const text = await res.text();
+        return text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as T);
+      });
+
     Promise.all([
       fetchJson<ApiResponse>("/api/event/calendar"),
       fetchJson<TournamentApiResponse>("/api/tournament/manager/calendar"),
+      fetchNdjson<SpotlightRoundApiEvent>("/api/broadcast/spotlight-rounds"),
     ])
-      .then(([eventData, tournamentData]) => {
+      .then(([eventData, tournamentData, spotlightRounds]) => {
         setError(null);
 
         const events: EventInput[] = eventData.currentPageResults.flatMap((ev) => {
@@ -218,7 +259,29 @@ export function App() {
           );
         });
 
-        success([...events, ...tournaments]);
+        const spotlights: EventInput[] = spotlightRounds
+          .filter((r): r is SpotlightRoundApiEvent & { startsAt: number } => typeof r.startsAt === "number")
+          .map((r) => {
+            const extendedProps: EventExtendedProps = {
+              source: "spotlight",
+              manage: r.url,
+              tag: r.spotlight.language.toUpperCase(),
+              rated: r.rated,
+              tourName: r.tour.name,
+              spotlightTitle: r.spotlight.title,
+              tier: r.spotlight.tier,
+              language: r.spotlight.language,
+            };
+            return {
+              id: r.id,
+              title: `${r.tour.name} · ${r.name}`,
+              start: r.startsAt,
+              extendedProps,
+              ...SPOTLIGHT_COLORS,
+            } satisfies EventInput;
+          });
+
+        success([...events, ...tournaments, ...spotlights]);
       })
       .catch((err: Error) => {
         setError(err.message);
@@ -257,7 +320,7 @@ export function App() {
           locale={browserLocale}
           height="100%"
           nowIndicator
-          dayMaxEvents={3}
+          dayMaxEvents={10}
           events={fetchEvents}
           eventContent={renderEventContent}
           eventDidMount={handleEventDidMount}
