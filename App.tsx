@@ -1,16 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import allLocales from "@fullcalendar/core/locales-all";
-import type {
-  EventClickArg,
-  EventContentArg,
-  EventInput,
-  EventMountArg,
-  EventSourceFunc,
-} from "@fullcalendar/core";
+import type { DatesSetArg, EventClickArg, EventContentArg, EventInput, EventMountArg } from "@fullcalendar/core";
 
 const browserLocale = typeof navigator !== "undefined" ? navigator.language : "en";
 
@@ -134,6 +128,15 @@ const SPOTLIGHT_COLORS: EventColors = {
   borderColor: "var(--spotlight-accent-strong)",
 };
 
+const SOURCE_TYPES = ["event", "tournament", "spotlight"] as const;
+type SourceType = (typeof SOURCE_TYPES)[number];
+
+const SOURCE_LABELS: Record<SourceType, string> = {
+  event: "Event",
+  tournament: "Tournament",
+  spotlight: "Broadcast",
+};
+
 function renderEventContent(arg: EventContentArg) {
   const { source, enabled, isPromo, tag } = arg.event.extendedProps as EventExtendedProps;
   const classNames = ["event-pill"];
@@ -179,10 +182,28 @@ export function App() {
   const calendarRef = useRef<FullCalendar>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rawEvents, setRawEvents] = useState<EventInput[]>([]);
+  const [activeSources, setActiveSources] = useState<Set<SourceType>>(new Set(SOURCE_TYPES));
+  const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const langFilterRef = useRef<HTMLDetailsElement>(null);
+  const latestRequestId = useRef(0);
 
-  const fetchEvents: EventSourceFunc = useCallback((info, success) => {
-    const since = info.start.getTime();
-    const until = info.end.getTime();
+  useEffect(() => {
+    if (!isLangOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (langFilterRef.current && !langFilterRef.current.contains(e.target as Node)) {
+        setIsLangOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isLangOpen]);
+
+  const loadEvents = useCallback((start: Date, end: Date) => {
+    const requestId = ++latestRequestId.current;
+    const since = start.getTime();
+    const until = end.getTime();
 
     const fetchJson = <T,>(path: string) =>
       fetch(`${path}?since=${since}&until=${until}`).then((res) => {
@@ -206,11 +227,15 @@ export function App() {
         ? `${label}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`
         : null;
 
+    setIsLoading(true);
+
     Promise.allSettled([
       fetchJson<ApiResponse>("/api/event/calendar"),
       fetchJson<TournamentApiResponse>("/api/tournament/manager/calendar"),
       fetchNdjson<SpotlightRoundApiEvent>("/api/broadcast/spotlight-rounds"),
     ]).then(([eventResult, tournamentResult, spotlightResult]) => {
+      if (requestId !== latestRequestId.current) return; // a newer request has since superseded this one
+
       const events: EventInput[] =
         eventResult.status === "fulfilled"
           ? eventResult.value.currentPageResults.flatMap((ev) => {
@@ -299,9 +324,17 @@ export function App() {
       ].filter((e): e is string => e !== null);
 
       setError(errors.length ? errors.join(" · ") : null);
-      success([...events, ...tournaments, ...spotlights]);
+      setRawEvents([...events, ...tournaments, ...spotlights]);
+      setIsLoading(false);
     });
   }, []);
+
+  const handleDatesSet = useCallback(
+    (arg: DatesSetArg) => {
+      loadEvents(arg.start, arg.end);
+    },
+    [loadEvents],
+  );
 
   const handleEventClick = useCallback((arg: EventClickArg) => {
     arg.jsEvent.preventDefault();
@@ -309,11 +342,92 @@ export function App() {
     if (manage) window.open(manage, "_blank", "noopener,noreferrer");
   }, []);
 
+  const toggleSource = useCallback((source: SourceType) => {
+    setActiveSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(source)) next.delete(source);
+      else next.add(source);
+      return next;
+    });
+  }, []);
+
+  const availableLanguages = useMemo(() => {
+    const languages = new Set<string>();
+    for (const ev of rawEvents) {
+      const language = (ev.extendedProps as EventExtendedProps | undefined)?.language;
+      if (language) languages.add(language);
+    }
+    return Array.from(languages).sort();
+  }, [rawEvents]);
+
+  const filteredEvents = useMemo(() => {
+    return rawEvents.filter((ev) => {
+      const props = ev.extendedProps as EventExtendedProps | undefined;
+      if (!props) return true;
+      if (!activeSources.has(props.source)) return false;
+      if (activeLanguage && props.language && props.language !== activeLanguage) return false;
+      return true;
+    });
+  }, [rawEvents, activeSources, activeLanguage]);
+
   return (
     <div className="app">
       <header className="app__header">
         <div className="app__brand">
           <span className="app__brand-name">Lichess BBB Calendar</span>
+        </div>
+        <div className="app__filters">
+          <div className="type-filter" role="group" aria-label="Filter by type">
+            {SOURCE_TYPES.map((source) => (
+              <button
+                key={source}
+                type="button"
+                className={`type-filter__btn type-filter__btn--${source}${
+                  activeSources.has(source) ? " type-filter__btn--active" : ""
+                }`}
+                aria-pressed={activeSources.has(source)}
+                onClick={() => toggleSource(source)}
+              >
+                {SOURCE_LABELS[source]}
+              </button>
+            ))}
+          </div>
+          <details
+            className="lang-filter"
+            ref={langFilterRef}
+            open={isLangOpen}
+            onToggle={(e) => setIsLangOpen(e.currentTarget.open)}
+          >
+            <summary>Language: {activeLanguage ? activeLanguage.toUpperCase() : "All"}</summary>
+            <div className="lang-filter__panel">
+              <label className="lang-filter__option">
+                <input
+                  type="radio"
+                  name="language"
+                  checked={activeLanguage === null}
+                  onChange={() => {
+                    setActiveLanguage(null);
+                    setIsLangOpen(false);
+                  }}
+                />
+                All languages
+              </label>
+              {availableLanguages.map((language) => (
+                <label key={language} className="lang-filter__option">
+                  <input
+                    type="radio"
+                    name="language"
+                    checked={activeLanguage === language}
+                    onChange={() => {
+                      setActiveLanguage(language);
+                      setIsLangOpen(false);
+                    }}
+                  />
+                  {language.toUpperCase()}
+                </label>
+              ))}
+            </div>
+          </details>
         </div>
         <div className="app__status" role="status">
           {isLoading && <span className="app__status-pill">Loading&hellip;</span>}
@@ -335,11 +449,11 @@ export function App() {
           height="100%"
           nowIndicator
           dayMaxEvents={10}
-          events={fetchEvents}
+          events={filteredEvents}
+          datesSet={handleDatesSet}
           eventContent={renderEventContent}
           eventDidMount={handleEventDidMount}
           eventClick={handleEventClick}
-          loading={setIsLoading}
         />
       </main>
     </div>
