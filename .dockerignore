@@ -1,0 +1,11 @@
+node_modules
+.devenv*
+.direnv
+.git
+.gitignore
+.dockerignore
+Dockerfile
+devenv.*
+.env*
+CLAUDE.md
+README.md
