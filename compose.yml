@@ -1,0 +1,33 @@
+services:
+  app:
+    image: ghcr.io/lichess-org/bbb-calendar:latest
+    restart: unless-stopped
+    networks:
+      - frontend
+    secrets:
+      - bbb_calendar_lichess_token
+    environment:
+      - LICHESS_API_TOKEN_FILE=/run/secrets/bbb_calendar_lichess_token
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=frontend
+      - traefik.http.services.bbb-calendar.loadbalancer.server.port=3000
+      - traefik.http.routers.bbb-calendar.rule=Host(`bbb-calendar.lichess.app`)
+      - traefik.http.routers.bbb-calendar.entrypoints=websecure
+      - traefik.http.routers.bbb-calendar.tls=true
+      - traefik.http.routers.bbb-calendar.tls.certresolver=myresolver
+      - traefik.http.routers.bbb-calendar.middlewares=authentik@file
+      - traefik.http.routers.bbb-calendar-outpost.rule=Host(`bbb-calendar.lichess.app`) && PathPrefix(`/outpost.goauthentik.io`)
+      - traefik.http.routers.bbb-calendar-outpost.entrypoints=websecure
+      - traefik.http.routers.bbb-calendar-outpost.tls=true
+      - traefik.http.routers.bbb-calendar-outpost.tls.certresolver=myresolver
+      - traefik.http.routers.bbb-calendar-outpost.priority=200
+      - traefik.http.routers.bbb-calendar-outpost.service=authentik-server@file
+
+secrets:
+  bbb_calendar_lichess_token:
+    external: true
+
+networks:
+  frontend:
+    external: true
