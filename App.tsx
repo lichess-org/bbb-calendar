@@ -205,15 +205,25 @@ export function App() {
     const since = start.getTime();
     const until = end.getTime();
 
+    const describeError = async (res: Response) => {
+      try {
+        const body = await res.clone().json();
+        if (body && typeof body.error === "string") return body.error;
+      } catch {
+        // response body wasn't JSON; fall back to the status-based message
+      }
+      return `Request failed with status ${res.status}`;
+    };
+
     const fetchJson = <T,>(path: string) =>
-      fetch(`${path}?since=${since}&until=${until}`).then((res) => {
-        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+      fetch(`${path}?since=${since}&until=${until}`).then(async (res) => {
+        if (!res.ok) throw new Error(await describeError(res));
         return res.json() as Promise<T>;
       });
 
     const fetchNdjson = <T,>(path: string) =>
       fetch(`${path}?since=${since}&until=${until}`).then(async (res) => {
-        if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+        if (!res.ok) throw new Error(await describeError(res));
         const text = await res.text();
         return text
           .split("\n")
