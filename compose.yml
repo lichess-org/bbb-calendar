@@ -4,10 +4,9 @@ services:
     restart: unless-stopped
     networks:
       - frontend
-    secrets:
-      - bbb_calendar_lichess_token
     environment:
-      - LICHESS_API_TOKEN_FILE=/run/secrets/bbb_calendar_lichess_token
+      - LICHESS_API_TOKEN=${LICHESS_API_TOKEN}
+      - HEALTHCHECK_KEY=${HEALTHCHECK_KEY}
     labels:
       - traefik.enable=true
       - traefik.docker.network=frontend
@@ -23,10 +22,6 @@ services:
       - traefik.http.routers.bbb-calendar-outpost.tls.certresolver=myresolver
       - traefik.http.routers.bbb-calendar-outpost.priority=200
       - traefik.http.routers.bbb-calendar-outpost.service=authentik-server@file
-
-secrets:
-  bbb_calendar_lichess_token:
-    external: true
 
 networks:
   frontend:
